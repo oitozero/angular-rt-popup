@@ -5,9 +5,11 @@ mod.factory('Popup', [
   '$timeout',
   '$compile',
   '$parse',
-  function ($window, $document, $timeout, $compile, $parse) {
+  '$sce',
+  function ($window, $document, $timeout, $compile, $parse, $sce) {
     var openedPopup = null;
     var template = '<div class="popover"><div ng-include="popupView" onload="$reposition()"></div></div>';
+    var templateHtml = '<div class="popover"><div ng-bind-html="content"></div></div>';
     // Padding towards edges of screen.
     var padding = 10;
     function loseFocus(e) {
@@ -43,6 +45,7 @@ mod.factory('Popup', [
         popupOverlap: 5
       });
       scope.popupView = attrs.popupShow;
+      scope.content = $sce.trustAsHtml(attrs.popupHtml);
       scope.hidePopover = hidePopup;
       $timeout(function () {
         makePopup(anchor, scope, attrs);
@@ -146,7 +149,12 @@ mod.factory('Popup', [
       $parse(options.popupShown)(scope);
     }
     function makePopup(anchor, scope, options) {
-      var element = $compile(template)(scope);
+      var element = null;
+      if (scope.popupView) {
+        element = $compile(template)(scope);
+      } else {
+        element = $compile(templateHtml)(scope);
+      }
       openedPopup = {
         el: element,
         options: options,
@@ -158,11 +166,17 @@ mod.factory('Popup', [
       var arrow = $('<div />', { 'class': 'arrow' });
       element.children('.arrow').remove();
       element.append(arrow);
-      scope.$reposition = function () {
+      if (scope.popupView) {
+        scope.$reposition = function () {
+          $timeout(function () {
+            fixPosition(scope, anchor, element, arrow, options);
+          });
+        };
+      } else {
         $timeout(function () {
           fixPosition(scope, anchor, element, arrow, options);
         });
-      };
+      }
     }
     return {
       show: showPopup,
@@ -207,6 +221,28 @@ mod.directive('popupAutoShow', [
               Popup.show(element, scope, attrs);
             }
           }
+        });
+      }
+    };
+  }
+]);
+mod.directive('popupHtml', [
+  'Popup',
+  '$parse',
+  '$timeout',
+  function (Popup, $parse, $timeout) {
+    return {
+      restrict: 'A',
+      scope: true,
+      link: function (scope, element, attrs) {
+        element.click(function () {
+          $timeout(function () {
+            Popup.close();
+            var shouldShow = $parse(attrs.popupIf || 'true');
+            if (shouldShow(scope)) {
+              Popup.show(element, scope, attrs);
+            }
+          });
         });
       }
     };

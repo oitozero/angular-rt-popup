@@ -1,8 +1,9 @@
 var mod = angular.module('rt.popup', []);
 
-mod.factory('Popup', function ($window, $document, $timeout, $compile, $parse) {
+mod.factory('Popup', function ($window, $document, $timeout, $compile, $parse, $sce) {
     var openedPopup = null;
     var template = '<div class="popover"><div ng-include="popupView" onload="$reposition()"></div></div>';
+    var templateHtml = '<div class="popover"><div ng-bind-html="content"></div></div>';
 
     // Padding towards edges of screen.
     var padding = 10;
@@ -47,6 +48,7 @@ mod.factory('Popup', function ($window, $document, $timeout, $compile, $parse) {
         });
 
         scope.popupView = attrs.popupShow;
+        scope.content = $sce.trustAsHtml(attrs.popupHtml);
         scope.hidePopover = hidePopup;
 
         $timeout(function () {
@@ -186,7 +188,12 @@ mod.factory('Popup', function ($window, $document, $timeout, $compile, $parse) {
     }
 
     function makePopup(anchor, scope, options) {
-        var element = $compile(template)(scope);
+        var element = null;
+        if ( scope.popupView ){
+            element = $compile(template)(scope);
+        } else {
+            element = $compile(templateHtml)(scope);
+        }
         openedPopup = {
             el: element,
             options: options,
@@ -201,11 +208,17 @@ mod.factory('Popup', function ($window, $document, $timeout, $compile, $parse) {
         element.children('.arrow').remove();
         element.append(arrow);
 
-        scope.$reposition = function () {
+        if ( scope.popupView ){
+            scope.$reposition = function () {
+                $timeout(function () {
+                    fixPosition(scope, anchor, element, arrow, options);
+                });
+            };
+        } else {
             $timeout(function () {
                 fixPosition(scope, anchor, element, arrow, options);
             });
-        };
+        }
     }
 
     return {
@@ -245,6 +258,25 @@ mod.directive('popupAutoShow', function (Popup, $parse) {
                         Popup.show(element, scope, attrs);
                     }
                 }
+            });
+        }
+    };
+});
+
+mod.directive('popupHtml', function (Popup, $parse, $timeout) {
+    return {
+        restrict: 'A',
+        scope: true,
+        link: function (scope, element, attrs) {
+            element.click(function () {
+                $timeout(function () {
+                    Popup.close();
+
+                    var shouldShow = $parse(attrs.popupIf || 'true');
+                    if (shouldShow(scope)) {
+                        Popup.show(element, scope, attrs);
+                    }
+                });
             });
         }
     };
